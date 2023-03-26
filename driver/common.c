@@ -102,8 +102,10 @@ EXPORT_SYMBOL_GPL(gip_report_battery);
 static void gip_led_brightness_set(struct led_classdev *dev,
 				   enum led_brightness brightness)
 {
-	struct gip_led *led = container_of(dev, typeof(*led), dev);
+	struct led_classdev_mc *mc_cdev = lcdev_to_mccdev(dev);
+	struct gip_led *led = container_of(mc_cdev, typeof(*led), dev);
 	int err;
+	uint8_t red, green, blue;
 
 	if (dev->flags & LED_UNREGISTERING)
 		return;
@@ -114,12 +116,25 @@ static void gip_led_brightness_set(struct led_classdev *dev,
 	if (err)
 		dev_err(&led->client->dev, "%s: set LED mode failed: %d\n",
 			__func__, err);
+
+	if (led->rgb) {
+		led_mc_calc_color_components(mc_cdev, brightness);
+
+		red = mc_cdev->subled_info[0].brightness;
+		green = mc_cdev->subled_info[1].brightness;
+		blue = mc_cdev->subled_info[2].brightness;
+
+		err = gip_set_led_rgb(led->client, red, blue, green);
+		if (err)
+			dev_err(&led->client->dev, "%s: set LED mode failed: %d\n",
+					__func__, err);
+	}
 }
 
 static ssize_t gip_led_mode_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
-	struct led_classdev *cdev = dev_get_drvdata(dev);
+	struct led_classdev_mc *cdev = dev_get_drvdata(dev);
 	struct gip_led *led = container_of(cdev, typeof(*led), dev);
 
 	return sprintf(buf, "%u\n", led->mode);
@@ -129,7 +144,7 @@ static ssize_t gip_led_mode_store(struct device *dev,
 				  struct device_attribute *attr,
 				  const char *buf, size_t count)
 {
-	struct led_classdev *cdev = dev_get_drvdata(dev);
+	struct led_classdev_mc *cdev = dev_get_drvdata(dev);
 	struct gip_led *led = container_of(cdev, typeof(*led), dev);
 	u8 mode;
 	int err;
@@ -141,7 +156,7 @@ static ssize_t gip_led_mode_store(struct device *dev,
 	dev_dbg(&led->client->dev, "%s: mode=%u\n", __func__, mode);
 	led->mode = mode;
 
-	err = gip_set_led_mode(led->client, mode, cdev->brightness);
+	err = gip_set_led_mode(led->client, mode, cdev->led_cdev.brightness);
 	if (err) {
 		dev_err(&led->client->dev, "%s: set LED mode failed: %d\n",
 			__func__, err);
@@ -172,24 +187,59 @@ int gip_init_led(struct gip_led *led, struct gip_client *client)
 		return err;
 	}
 
-	led->dev.name = devm_kasprintf(&client->dev, GFP_KERNEL,
-				       "%s:white:status",
-					dev_name(&client->dev));
-	if (!led->dev.name)
-		return -ENOMEM;
+	if (led->rgb) {
+	    led->dev.led_cdev.name = devm_kasprintf(&client->dev, GFP_KERNEL,
+	    			       "%s:rgb:status",
+	    				dev_name(&client->dev));
+	    if (!led->dev.led_cdev.name)
+	    	return -ENOMEM;
 
-	led->dev.brightness = GIP_LED_BRIGHTNESS_DEFAULT;
-	led->dev.max_brightness = GIP_LED_BRIGHTNESS_MAX;
-	led->dev.brightness_set = gip_led_brightness_set;
-	led->dev.groups = gip_led_groups;
+	    led->dev.led_cdev.brightness = GIP_LED_BRIGHTNESS_DEFAULT;
+	    led->dev.led_cdev.max_brightness = GIP_LED_BRIGHTNESS_MAX;
+	    led->dev.led_cdev.brightness_set = gip_led_brightness_set;
+	    led->dev.led_cdev.groups = gip_led_groups;
 
-	led->client = client;
-	led->mode = GIP_LED_ON;
+	    // Configure RBG LEDS for XES2
+	    led->dev.num_colors = 3;
+	    led->dev.subled_info = devm_kcalloc(&client->dev, 3, sizeof(struct mc_subled), GFP_KERNEL);
+	    if (!led->dev.subled_info) {
+	    	return -ENOMEM;
+	    }
 
-	err = devm_led_classdev_register(&client->dev, &led->dev);
-	if (err)
-		dev_err(&client->dev, "%s: register failed: %d\n",
-			__func__, err);
+	    led->dev.subled_info[0].color_index = LED_COLOR_ID_RED;
+	    led->dev.subled_info[0].channel = 0;
+	    led->dev.subled_info[1].color_index = LED_COLOR_ID_GREEN;
+	    led->dev.subled_info[0].channel = 1;
+	    led->dev.subled_info[2].color_index = LED_COLOR_ID_BLUE;
+	    led->dev.subled_info[0].channel = 2;
+
+	    led->client = client;
+	    led->mode = GIP_LED_ON;
+
+	    err = devm_led_classdev_multicolor_register(&client->dev, &led->dev);
+	    if (err)
+	    	dev_err(&client->dev, "%s: register failed: %d\n",
+	    		__func__, err);
+	} else {
+	    led->dev.led_cdev.name = devm_kasprintf(&client->dev, GFP_KERNEL,
+	    			       "%s:white:status",
+	    				dev_name(&client->dev));
+	    if (!led->dev.led_cdev.name)
+	    	return -ENOMEM;
+
+	    led->dev.led_cdev.brightness = GIP_LED_BRIGHTNESS_DEFAULT;
+	    led->dev.led_cdev.max_brightness = GIP_LED_BRIGHTNESS_MAX;
+	    led->dev.led_cdev.brightness_set = gip_led_brightness_set;
+	    led->dev.led_cdev.groups = gip_led_groups;
+
+	    led->client = client;
+	    led->mode = GIP_LED_ON;
+
+	    err = devm_led_classdev_register(&client->dev, &led->dev.led_cdev);
+	    if (err)
+	    	dev_err(&client->dev, "%s: register failed: %d\n",
+	    		__func__, err);
+	}
 
 	return err;
 }

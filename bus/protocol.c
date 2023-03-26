@@ -36,6 +36,7 @@ enum gip_command_internal {
 	GIP_CMD_LED = 0x0a,
 	GIP_CMD_HID_REPORT = 0x0b,
 	GIP_CMD_FIRMWARE = 0x0c,
+	GIP_CMD_LED_RGB = 0x0e,
 	GIP_CMD_SERIAL_NUMBER = 0x1e,
 	GIP_CMD_AUDIO_SAMPLES = 0x60,
 };
@@ -162,6 +163,16 @@ struct gip_pkt_led {
 	u8 unknown;
 	u8 mode;
 	u8 brightness;
+} __packed;
+
+struct gip_pkt_led_rgb {
+	u8 unknown[2];
+	u8 red;
+	u8 green;
+	u8 blue;
+	u8 unknown2;
+	u8 unknown3;
+	u8 unknown4;
 } __packed;
 
 struct gip_pkt_serial_number {
@@ -522,6 +533,30 @@ int gip_set_led_mode(struct gip_client *client,
 	return gip_send_pkt(client, &hdr, &pkt);
 }
 EXPORT_SYMBOL_GPL(gip_set_led_mode);
+
+int gip_set_led_rgb(struct gip_client *client, uint8_t red, uint8_t green, uint8_t blue) {
+	struct gip_header hdr = {};
+	struct gip_pkt_led_rgb pkt = {};
+
+	hdr.command = GIP_CMD_LED_RGB;
+	// RGB packets have options set to 0x00
+	hdr.options = 0x00;
+	hdr.packet_length = sizeof(pkt);
+
+	pkt.red = red;
+	pkt.green = green;
+	pkt.blue = blue;
+
+	// Not sure what these are used for
+	pkt.unknown2 = 0x00;
+	pkt.unknown3 = 0x00;
+	pkt.unknown4 = 0x00;
+
+	return gip_send_pkt(client, &hdr, &pkt);
+}
+EXPORT_SYMBOL_GPL(gip_set_led_rgb);
+
+
 
 static void gip_copy_audio_samples(struct gip_client *client,
 				   void *samples, void *buf)

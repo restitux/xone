@@ -7,6 +7,7 @@
 
 #include <linux/power_supply.h>
 #include <linux/leds.h>
+#include <linux/led-class-multicolor.h>
 #include <linux/input.h>
 
 #include "../bus/bus.h"
@@ -21,7 +22,8 @@ struct gip_battery {
 };
 
 struct gip_led {
-	struct led_classdev dev;
+	bool rgb;
+	struct led_classdev_mc dev;
 
 	struct gip_client *client;
 	enum gip_led_mode mode;

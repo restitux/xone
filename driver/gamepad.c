@@ -80,6 +80,7 @@ struct gip_gamepad {
 	struct gip_input input;
 
 	bool series_xs;
+	bool eliteseries2;
 
 	struct gip_gamepad_rumble {
 		/* serializes access to rumble packet */
@@ -168,6 +169,15 @@ static bool gip_gamepad_is_series_xs(struct gip_client *client)
 	return false;
 }
 
+static bool gip_gamepad_is_eliteseries2(struct gip_client *client)
+{
+	struct gip_hardware *hw = &client->hardware;
+
+	return (hw->vendor == GIP_GP_VID_MICROSOFT &&
+	    hw->product == GIP_GP_PID_ELITE2);
+}
+
+
 static int gip_gamepad_init_input(struct gip_gamepad *gamepad)
 {
 	struct input_dev *dev = gamepad->input.dev;
@@ -176,6 +186,7 @@ static int gip_gamepad_init_input(struct gip_gamepad *gamepad)
 	gamepad->series_xs = gip_gamepad_is_series_xs(gamepad->client);
 	if (gamepad->series_xs)
 		input_set_capability(dev, EV_KEY, KEY_RECORD);
+
 
 	input_set_capability(dev, EV_KEY, BTN_MODE);
 	input_set_capability(dev, EV_KEY, BTN_START);
@@ -302,6 +313,7 @@ static int gip_gamepad_probe(struct gip_client *client)
 	if (err)
 		return err;
 
+	gamepad->led.rgb = gip_gamepad_is_eliteseries2(gamepad->client);
 	err = gip_init_led(&gamepad->led, client);
 	if (err)
 		return err;

@@ -103,6 +103,7 @@ int gip_fix_audio_volume(struct gip_client *client);
 int gip_send_rumble(struct gip_client *client, void *pkt, u32 len);
 int gip_set_led_mode(struct gip_client *client,
 		     enum gip_led_mode mode, u8 brightness);
+int gip_set_led_rgb(struct gip_client *client, uint8_t red, uint8_t green, uint8_t blue);
 int gip_send_audio_samples(struct gip_client *client, void *samples);
 
 int gip_enable_audio(struct gip_client *client);

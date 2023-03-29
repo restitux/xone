@@ -175,6 +175,68 @@ struct gip_pkt_led_rgb {
 	u8 unknown4;
 } __packed;
 
+struct gip_pkt_xes2_set_button_profile {
+    u8 unknown;
+    u8 profile_shift;
+    // profile | regular | shift
+    //       1 | 0x20    | 0x26
+    //       2 | 0x22    | 0x28
+    //       3 | 0x24    | 0x2a
+    //
+    u8 unknown2[2]; // always 0x38 0x10
+    u8 right_top_paddle;
+    u8 right_botton_paddle;
+    u8 left_top_paddle;
+    u8 left_bottom_paddle;
+    u8 a;
+    u8 b;
+    u8 x;
+    u8 y;
+    u8 dpad_up;
+    u8 dpad_down;
+    u8 dpad_left;
+    u8 dpad_right;
+    u8 lb;
+    u8 rb;
+    u8 ls_click;
+    u8 rs_click;
+    u8 lt; // if set to GIP_UNMAPPED (0), trigger it bound to itself
+    u8 rt; // if set to GIP_UNMAPPED (0), trigger is bound to itself
+    u8 unknown3[9];
+    u8 left_main_vibration;
+    u8 right_main_vibration;
+    u8 left_trigger_vibration;
+    u8 right_trigger_vibration;
+    u8 lt_deadzone_max;
+    u8 lt_deadzone_min;
+    u8 lt_deadzone_max2; // Not sure why these are duplicated
+    u8 lt_deadzone_min2; // ^^
+    u8 unknown5[2];
+    u8 rt_deadzone_max;
+    u8 rt_deadzone_min;
+    u8 rt_deadzone_max2; // Not sure why these are duplicated
+    u8 rt_deadzone_min2; // ^^
+    u8 unknown6[22];
+    u8 guide_red;
+    u8 guide_green;
+    u8 guide_blue;
+    u8 unknown7[4];
+} __packed;
+
+struct gip_pkt_xes2_set_stick_profile {
+    u8 unknown;
+    u8 profile_shift;
+    // profile | stick? | stick shift?
+    //       1 | 0x21   | 0x27
+    //       2 | 0x23   | 0x29
+    //       3 | 0x25   | 0x2b
+    //
+    u8 unknown2[6 + 8 + 8 + 6];
+    u8 invert_stick; // BIT(0): left, BIT(1): right, BIT(2): swap stick X, BIT(3): swap stick Y
+
+} __packed;
+
+
 struct gip_pkt_serial_number {
 	u8 unknown[2];
 	char serial[14];

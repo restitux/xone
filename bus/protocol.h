@@ -57,6 +57,36 @@ enum gip_led_mode {
 	GIP_LED_FADE_FAST = 0x09,
 };
 
+enum gip_xes2_profile_buttons {
+    GIP_UNMAPPED = 0x00,
+    GIP_TRIGGER_DEFAULT = 0x00,
+    GIP_SHIFT = 0x01,
+    GIP_MENU = 0x02,
+    GIP_VIEW = 0x03,
+    GIP_A = 0x04,
+    GIP_B = 0x05,
+    GIP_X = 0x06,
+    GIP_Y = 0x07,
+    GIP_DPAD_UP = 0x08,
+    GIP_DPAD_DOWN = 0x09,
+    GIP_DPAD_LEFT = 0x0a,
+    GIP_DPAD_RIGHT = 0x0b,
+    GIP_LB = 0x0c,
+    GIP_RB = 0x0d,
+    GIP_LS_CLICK = 0x0e,
+    GIP_RS_CLICK = 0x0f,
+    GIP_LT = 0x10,
+    GIP_RT = 0x11,
+    GIP_LS_UP = 0x12,
+    GIP_LS_DOWN = 0x13,
+    GIP_LS_LEFT = 0x14,
+    GIP_LS_RIGHT = 0x15,
+    GIP_RS_UP = 0x16,
+    GIP_RS_DOWN = 0x17,
+    GIP_RS_LEFT = 0x18,
+    GIP_RS_RIGHT = 0x19,
+};
+
 struct gip_chunk_buffer {
 	u32 length;
 	u8 data[];

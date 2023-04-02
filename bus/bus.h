@@ -104,6 +104,7 @@ struct gip_driver {
 	struct device_driver drv;
 	const char *name;
 	const char *class;
+	struct device *gip_root;
 
 	struct gip_driver_ops ops;
 

@@ -157,6 +157,8 @@ static int gip_bus_remove_compat(struct device *dev)
 }
 #endif
 
+static struct device *gip_root;
+
 static struct bus_type gip_bus_type = {
 	.name = "xone-gip",
 	.match = gip_bus_match,
@@ -362,6 +364,7 @@ int __gip_register_driver(struct gip_driver *drv, struct module *owner,
 	drv->drv.bus = &gip_bus_type;
 	drv->drv.owner = owner;
 	drv->drv.mod_name = mod_name;
+	drv->gip_root = gip_root;
 
 	return driver_register(&drv->drv);
 }
@@ -375,11 +378,24 @@ EXPORT_SYMBOL_GPL(gip_unregister_driver);
 
 static int __init gip_bus_init(void)
 {
-	return bus_register(&gip_bus_type);
+	int ret;
+
+	ret = bus_register(&gip_bus_type);
+	if (ret)
+		return ret;
+
+	gip_root = root_device_register("gip");
+	if (IS_ERR(gip_root)) {
+		bus_unregister(&gip_bus_type);
+		return PTR_ERR(gip_root);
+	}
+
+	return 0;
 }
 
 static void __exit gip_bus_exit(void)
 {
+	root_device_unregister(gip_root);
 	bus_unregister(&gip_bus_type);
 }
 

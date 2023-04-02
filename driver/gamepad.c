@@ -79,6 +79,12 @@ struct gip_gamepad {
 	struct gip_led led;
 	struct gip_input input;
 
+	spinlock_t left_trigger_lock;
+	int left_trigger_button_threshold;
+
+	spinlock_t right_trigger_lock;
+	int right_trigger_button_threshold;
+
 	bool series_xs;
 	bool eliteseries2;
 
@@ -90,6 +96,80 @@ struct gip_gamepad {
 		struct gip_gamepad_pkt_rumble pkt;
 	} rumble;
 };
+
+ssize_t gip_trigger_threshold_show(
+	struct kobject *kobj,
+	struct kobj_attribute *attr,
+    char *buf)
+{
+    int return_val;
+	unsigned long flags;
+
+	struct device *device = kobj_to_dev(kobj->parent);
+	struct gip_gamepad *gamepad = dev_get_drvdata(device);
+
+    if (strcmp(attr->attr.name, "left_trigger_button_threshold") == 0) {
+		spin_lock_irqsave(&gamepad->left_trigger_lock, flags);
+		return_val = gamepad->left_trigger_button_threshold;
+		spin_unlock_irqrestore(&gamepad->left_trigger_lock, flags);
+	} else if (strcmp(attr->attr.name, "right_trigger_button_threshold") == 0) {
+		spin_lock_irqsave(&gamepad->right_trigger_lock, flags);
+		return_val = gamepad->right_trigger_button_threshold;
+		spin_unlock_irqrestore(&gamepad->right_trigger_lock, flags);
+	}
+
+    return sysfs_emit(buf, "%d\n", return_val);
+}
+
+ssize_t gip_trigger_threshold_store(
+	struct kobject *kobj,
+	struct kobj_attribute *attr,
+    const char *buf,
+	size_t count)
+{
+    int var, ret;
+	struct device *device = kobj_to_dev(kobj->parent);
+	struct gip_gamepad *gamepad = dev_get_drvdata(device);
+	unsigned long flags;
+
+	ret = kstrtoint(buf, 10, &var);
+	if (ret < 0)
+		return ret;
+
+	if (strcmp(attr->attr.name, "left_trigger_button_threshold") == 0) {
+		spin_lock_irqsave(&gamepad->left_trigger_lock, flags);
+		gamepad->left_trigger_button_threshold = var;
+		spin_unlock_irqrestore(&gamepad->left_trigger_lock, flags);
+	} else if (strcmp(attr->attr.name, "right_trigger_button_threshold") == 0) {
+		spin_lock_irqsave(&gamepad->right_trigger_lock, flags);
+		gamepad->right_trigger_button_threshold = var;
+		spin_unlock_irqrestore(&gamepad->right_trigger_lock, flags);
+	}
+
+     return count;
+}
+
+static struct kobj_attribute attr_left_trigger_button_threshold = __ATTR(
+	left_trigger_button_threshold,
+	0644,
+	gip_trigger_threshold_show,
+	gip_trigger_threshold_store
+);
+
+static struct kobj_attribute attr_right_trigger_button_threshold = __ATTR(
+	right_trigger_button_threshold,
+	0644,
+	gip_trigger_threshold_show,
+	gip_trigger_threshold_store
+);
+
+static struct attribute *dev_attrs[] = {
+      &attr_left_trigger_button_threshold.attr,
+      &attr_right_trigger_button_threshold.attr,
+      NULL,
+};
+
+ATTRIBUTE_GROUPS(dev);
 
 static void gip_gamepad_send_rumble(struct timer_list *timer)
 {
@@ -197,6 +277,8 @@ static int gip_gamepad_init_input(struct gip_gamepad *gamepad)
 	input_set_capability(dev, EV_KEY, BTN_Y);
 	input_set_capability(dev, EV_KEY, BTN_TL);
 	input_set_capability(dev, EV_KEY, BTN_TR);
+	input_set_capability(dev, EV_KEY, BTN_TL2);
+	input_set_capability(dev, EV_KEY, BTN_TR2);
 	input_set_capability(dev, EV_KEY, BTN_THUMBL);
 	input_set_capability(dev, EV_KEY, BTN_THUMBR);
 	input_set_abs_params(dev, ABS_X, -32768, 32767, 16, 128);
@@ -258,6 +340,7 @@ static int gip_gamepad_op_input(struct gip_client *client, void *data, u32 len)
 	struct gip_gamepad_pkt_series_xs *pkt_xs = data + sizeof(*pkt);
 	struct input_dev *dev = gamepad->input.dev;
 	u16 buttons = le16_to_cpu(pkt->buttons);
+	unsigned long flags;
 
 	if (len < sizeof(*pkt))
 		return -EINVAL;
@@ -285,6 +368,15 @@ static int gip_gamepad_op_input(struct gip_client *client, void *data, u32 len)
 	input_report_abs(dev, ABS_RY, ~(s16)le16_to_cpu(pkt->stick_right_y));
 	input_report_abs(dev, ABS_Z, le16_to_cpu(pkt->trigger_left));
 	input_report_abs(dev, ABS_RZ, le16_to_cpu(pkt->trigger_right));
+
+	spin_lock_irqsave(&gamepad->left_trigger_lock, flags);
+	input_report_key(dev, BTN_TL2, le16_to_cpu(pkt->trigger_left) > gamepad->left_trigger_button_threshold);
+	spin_unlock_irqrestore(&gamepad->left_trigger_lock, flags);
+
+	spin_lock_irqsave(&gamepad->right_trigger_lock, flags);
+	input_report_key(dev, BTN_TR2, le16_to_cpu(pkt->trigger_right) > gamepad->right_trigger_button_threshold);
+	spin_unlock_irqrestore(&gamepad->right_trigger_lock, flags);
+
 	input_report_abs(dev, ABS_HAT0X, !!(buttons & GIP_GP_BTN_DPAD_R) -
 					 !!(buttons & GIP_GP_BTN_DPAD_L));
 	input_report_abs(dev, ABS_HAT0Y, !!(buttons & GIP_GP_BTN_DPAD_D) -
@@ -297,7 +389,9 @@ static int gip_gamepad_op_input(struct gip_client *client, void *data, u32 len)
 static int gip_gamepad_probe(struct gip_client *client)
 {
 	struct gip_gamepad *gamepad;
+	struct kobject *trigger_threshold;
 	int err;
+	unsigned long flags;
 
 	gamepad = devm_kzalloc(&client->dev, sizeof(*gamepad), GFP_KERNEL);
 	if (!gamepad)
@@ -321,6 +415,25 @@ static int gip_gamepad_probe(struct gip_client *client)
 	err = gip_complete_authentication(client);
 	if (err)
 		return err;
+
+	spin_lock_init(&gamepad->left_trigger_lock);
+	spin_lock_init(&gamepad->right_trigger_lock);
+
+	spin_lock_irqsave(&gamepad->left_trigger_lock, flags);
+	gamepad->left_trigger_button_threshold = 10;
+	spin_unlock_irqrestore(&gamepad->left_trigger_lock, flags);
+
+	spin_lock_irqsave(&gamepad->right_trigger_lock, flags);
+	gamepad->right_trigger_button_threshold = 10;
+	spin_unlock_irqrestore(&gamepad->right_trigger_lock, flags);
+
+	trigger_threshold = kobject_create_and_add("trigger_threshold", &client->dev.kobj);
+	if (!trigger_threshold)
+		return -ENOMEM;
+
+	if (sysfs_create_group(trigger_threshold, &dev_group)) {
+		return -ENOMEM;
+	}
 
 	err = gip_init_input(&gamepad->input, client, GIP_GP_NAME);
 	if (err)
